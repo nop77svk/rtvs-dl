@@ -4,12 +4,26 @@
 [ -z "$1" ] && echo "Link is empty" && exit
 echo "Download page: "$1
 
-# Archive page, extract the embedded video player URL
-video_iframe_tag=$( curl -s "$1" | grep -Ei '<iframe\s+.*\s+class="player-iframe"' )
-# echo "Video iframe tag: ${video_iframe_tag}"
+# some config
+unique_token=${RANDOM}
+temp_file_prefix=${TEMP}/rtvs-dl.${unique_token}
+
+# RTVS archive page
+curl -s "$1" > "${temp_file_prefix}.archive_page.html"
+
+# extract the embedded video player URL
+video_iframe_tag=$( grep -Ei '<iframe.*\s+class="player-iframe"' "${temp_file_prefix}.archive_page.html" )
+[ -n ${DEBUG:-} ] && echo "{video_iframe_tag} = ${video_iframe_tag}"
 
 video_frame_url=$( echo "${video_iframe_tag}" | sed 's/^.*src="\([^"]*\)".*$/\1/g' )
 echo "Video iframe URL: ${video_frame_url}"
+
+# extract full stream title
+full_title_tag=$( grep -Ei '<meta.*\s+property="og:title"' "${temp_file_prefix}.archive_page.html" )
+[ -n ${DEBUG:-} ] && echo "{full_title_tag} = ${full_title_tag}"
+
+full_title=$( echo "${full_title_tag}" | sed 's/^.*content="\([^"]*\)".*$/\1/g' )
+echo "Video title: ${full_title}"
 
 # Download page and extract playlist
 playlist=$(curl -s "${video_frame_url}" | grep -i //www.rtvs.sk/json/archive)
@@ -24,6 +38,8 @@ echo "Download playlist: "$playlist_link
 
 # Extract line with link to stream
 stream_tmp="$(curl -s $playlist_link)"
+[ -n ${DEBUG:-} ] && echo "{stream_tmp} = ${stream_tmp}"
+
 stream_name=$(echo "${stream_tmp%x}" | grep "src\" :" | grep smil | head -1)
 echo "Stream name:" $stream_name
 stream_title=$(echo "${stream_tmp%x}" | grep "title")
@@ -51,4 +67,10 @@ stream_title=$(echo "$stream_title" | sed 's/^\s//g')
 stream_title=$(echo "$stream_title" | sed 's/\s/_/g')
 echo "Download stream link: "$stream_link
 
-ffmpeg -i $stream_link -acodec mp3 -vcodec copy $stream_title.mkv
+# the actual download
+ffmpeg -i $stream_link -c:a aac -c:v copy $stream_title.mp4
+
+# cleanup
+if [ -z ${DEBUG:-} ] ; then
+	rm -f "${temp_file_prefix}.archive_page.html"
+fi
