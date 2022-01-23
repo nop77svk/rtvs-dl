@@ -50,6 +50,7 @@ stream_name_array=($stream_name)
 
 # Extract link and remove quotes and commas
 stream_link=$(echo ${stream_name_array[2]} | sed 's/[\",]//g')
+echo "Download stream link: "$stream_link
 
 # Extract title
 stream_title=$(echo "$stream_title" | cut -d ":" -f 2)
@@ -65,10 +66,9 @@ stream_title=$(echo "$stream_title" | sed 's/^\s//g')
 
 # Replace space to underscore
 stream_title=$(echo "$stream_title" | sed 's/\s/_/g')
-echo "Download stream link: "$stream_link
 
 # the actual download
-ffmpeg -i $stream_link -c:a aac -c:v copy $stream_title.mp4
+ffmpeg -i "$stream_link" -c:a aac -c:v copy "$stream_title.mp4"
 
 # cleanup
 if [ -z ${DEBUG:-} ] ; then
