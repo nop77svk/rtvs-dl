@@ -44,7 +44,7 @@ stream_name=$(echo "${stream_tmp%x}" | grep "src\" :" | grep smil | head -1)
 echo "Stream name: $stream_name"
 
 stream_title=$(echo "${stream_tmp%x}" | grep "title")
-echo "Stream title: $stream_title"
+[ -n ${DEBUG:-} ] && echo "{stream_title} = ${stream_title}"
 
 # Stream link name to array
 stream_name_array=($stream_name)
@@ -55,21 +55,25 @@ echo "Download stream link: $stream_link"
 
 # Extract title
 stream_title=$(echo "$stream_title" | cut -d ":" -f 2)
+[ -n ${DEBUG:-} ] && echo "{stream_title} = ${stream_title}"
 
 # Remove ", from end
 stream_title=$(echo "$stream_title" | sed 's/\",//g')
+[ -n ${DEBUG:-} ] && echo "{stream_title} = ${stream_title}"
 
 # Reove quotes
 stream_title=$(echo "$stream_title" | sed 's/\"//g')
+[ -n ${DEBUG:-} ] && echo "{stream_title} = ${stream_title}"
 
 # Trim
 stream_title=$(echo "$stream_title" | sed 's/^\s//g')
+[ -n ${DEBUG:-} ] && echo "{stream_title} = ${stream_title}"
 
-# Replace space to underscore
-stream_title=$(echo "$stream_title" | sed 's/\s/_/g')
+stream_title=${full_title:-${stream_title}}
+echo "Stream title: ${stream_title}"
 
 # the actual download
-ffmpeg -i "$stream_link" -c:a aac -c:v copy "$stream_title.mp4"
+ffmpeg -i "$stream_link" -c:a aac -c:v copy "${stream_title}.mp4"
 
 # cleanup
 if [ -z ${DEBUG:-} ] ; then
