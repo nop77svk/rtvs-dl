@@ -2,7 +2,7 @@
 
 # If link is empty exit
 [ -z "$1" ] && echo "Link is empty" && exit
-echo "Download page: "$1
+echo "Download page: $1"
 
 # some config
 unique_token=${RANDOM}
@@ -27,30 +27,31 @@ echo "Video title: ${full_title}"
 
 # Download page and extract playlist
 playlist=$(curl -s "${video_frame_url}" | grep -i //www.rtvs.sk/json/archive)
-echo "Playlist:" $playlist
+[ -n ${DEBUG:-} ] && echo "Playlist: $playlist"
 
 # Playlist to array
 playlist_array=($playlist)
 
 # Extract playlist link
 playlist_link=$(echo 'https:'${playlist_array[3]} | sed 's/\"//g')
-echo "Download playlist: "$playlist_link
+echo "Download playlist: $playlist_link"
 
 # Extract line with link to stream
 stream_tmp="$(curl -s $playlist_link)"
 [ -n ${DEBUG:-} ] && echo "{stream_tmp} = ${stream_tmp}"
 
 stream_name=$(echo "${stream_tmp%x}" | grep "src\" :" | grep smil | head -1)
-echo "Stream name:" $stream_name
+echo "Stream name: $stream_name"
+
 stream_title=$(echo "${stream_tmp%x}" | grep "title")
-echo "Stream title: "$stream_title
+echo "Stream title: $stream_title"
 
 # Stream link name to array
 stream_name_array=($stream_name)
 
 # Extract link and remove quotes and commas
-stream_link=$(echo ${stream_name_array[2]} | sed 's/[\",]//g')
-echo "Download stream link: "$stream_link
+stream_link=$(echo "${stream_name_array[2]}" | sed 's/[\",]//g')
+echo "Download stream link: $stream_link"
 
 # Extract title
 stream_title=$(echo "$stream_title" | cut -d ":" -f 2)
