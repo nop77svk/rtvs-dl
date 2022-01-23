@@ -73,7 +73,7 @@ stream_title=${full_title:-${stream_title}}
 echo "Stream title: ${stream_title}"
 
 # the actual download
-ffmpeg -i "${stream_link}" -c:a aac -map 0:a -c:v copy -map 0:v "${stream_title}.mp4"
+[ -z "${DEBUG:-}" ] && ffmpeg -i "${stream_link}" -c:a aac -map 0:a -c:v copy -map 0:v "${stream_title}.mp4"
 
 # cleanup
 if [ -z "${DEBUG:-}" ] ; then
