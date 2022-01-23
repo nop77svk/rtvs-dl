@@ -4,8 +4,15 @@
 [ -z "$1" ] && echo "Link is empty" && exit
 echo "Download page: "$1
 
+# Archive page, extract the embedded video player URL
+video_iframe_tag=$( curl -s "$1" | grep -Ei '<iframe\s+.*\s+class="player-iframe"' )
+# echo "Video iframe tag: ${video_iframe_tag}"
+
+video_frame_url=$( echo "${video_iframe_tag}" | sed 's/^.*src="\([^"]*\)".*$/\1/g' )
+echo "Video iframe URL: ${video_frame_url}"
+
 # Download page and extract playlist
-playlist=$(curl -s $1 | grep -i //www.rtvs.sk/json/archive)
+playlist=$(curl -s "${video_frame_url}" | grep -i //www.rtvs.sk/json/archive)
 echo "Playlist:" $playlist
 
 # Playlist to array
