@@ -23,35 +23,27 @@ full_title_tag=$( grep -Ei '<meta.*\s+property="og:title"' "${temp_file_prefix}.
 [ -n "${DEBUG:-}" ] && echo "{full_title_tag} = ${full_title_tag}"
 
 full_title=$( echo "${full_title_tag}" | sed 's/^.*content="\([^"]*\)".*$/\1/g' )
-echo "Video title: ${full_title}"
+[ -n "${DEBUG:-}" ] && echo "{full_title} = ${full_title}"
 
 # Download page and extract playlist
 playlist=$(curl -s "${video_frame_url}" | grep -i //www.rtvs.sk/json/archive)
-[ -n "${DEBUG:-}" ] && echo "Playlist: $playlist"
+[ -n "${DEBUG:-}" ] && echo "{playlist} = $playlist"
 
 # Playlist to array
 playlist_array=($playlist)
 
 # Extract playlist link
 playlist_link=$(echo 'https:'${playlist_array[3]} | sed 's/\"//g')
-echo "Download playlist: $playlist_link"
+[ -n "${DEBUG:-}" ] && echo "{playlist_link} = $playlist_link"
 
 # Extract line with link to stream
 stream_tmp="$(curl -s $playlist_link)"
 [ -n "${DEBUG:-}" ] && echo "{stream_tmp} = ${stream_tmp}"
 
-stream_name=$(echo "${stream_tmp%x}" | grep "src\" :" | grep smil | head -1)
-echo "Stream name: $stream_name"
+# ----------------------------------------------------------------------------
 
-stream_title=$(echo "${stream_tmp%x}" | grep "title")
-[ -n "${DEBUG:-}" ] && echo "{stream_title} = ${stream_title}"
-
-# Stream link name to array
-stream_name_array=($stream_name)
-
-# Extract link and remove quotes and commas
-stream_link=$(echo "${stream_name_array[2]}" | sed 's/[\",]//g')
-echo "Download stream link: $stream_link"
+stream_title_node=$(echo "${stream_tmp%x}" | grep "title")
+[ -n "${DEBUG:-}" ] && echo "{stream_title_node} = ${stream_title_node}"
 
 # Extract title
 stream_title=$(echo "$stream_title" | cut -d ":" -f 2)
@@ -72,8 +64,67 @@ stream_title=$(echo "$stream_title" | sed 's/^\s//g')
 stream_title=${full_title:-${stream_title}}
 echo "Stream title: ${stream_title}"
 
-# the actual download
-[ -z "${DEBUG:-}" ] && ffmpeg -i "${stream_link}" -c:a aac -map 0:a -c:v copy -map 0:v "${stream_title}.mp4"
+# ----------------------------------------------------------------------------
+
+stream_src_node=$(echo "${stream_tmp%x}" | grep "src\" :" | grep smil | head -1)
+[ -n "${DEBUG:-}" ] && echo "{stream_src_node} = ${stream_src_node}"
+
+# Stream link name to array
+stream_src_node_array=(${stream_src_node})
+
+# Extract link and remove quotes and commas
+stream_link=$(echo "${stream_src_node_array[2]}" | sed 's/[\",]//g')
+[ -n "${DEBUG:-}" ] && echo "{stream_link} = $stream_link"
+
+(
+	if [[ "${stream_link}" =~ /playlist\.m3u8 ]] ; then
+		url_base=$( echo "${stream_link}" | sed 's/^\(https\?:\/\/[^/]*\)\/.*$/\1/' )
+		[ -n "${DEBUG:-}" ] && echo "{url_base} = ${url_base}"
+		[ -n "${DEBUG:-}" ] && wget_log_output=/dev/stderr || wget_log_output=/dev/null
+
+		wget -O /dev/stdout -o ${wget_log_output} --no-cache "${stream_link}" \
+			| tr '\r' '\n' \
+			| grep -vE '^[[:space:]]*$' \
+			| gawk -v "i_url_base=${url_base}" '
+				BEGIN {
+					o_fs = "\t";
+				}
+
+				$0 ~ /^#EXT-X-STREAM-INF/ {
+					match($0, /BANDWIDTH=([0-9]+)/, xx);
+					bandwidth = xx[1];
+
+					match($0, /RESOLUTION=([0-9]+x[0-9]+)/, xx);
+					resolution = xx[1];
+
+					nextline;
+				}
+
+				$0 ~ /^\// {
+					printf("%s%s%s%s%s%s\n", bandwidth, o_fs, resolution, o_fs, i_url_base, $0);
+				}
+			' \
+			| /bin/sort -b -n -r -k 1
+	else
+		echo "-1\tUNKNOWNxUNKNOWN\t${stream_link}"
+	fi
+) | while read -r stream_bandwidth stream_resolution stream_chunk_list ; do
+	echo "Trying to download video resolution ${stream_resolution}"
+	[ -n "${DEBUG:-}" ] && echo "{stream_bandwidth} = ${stream_bandwidth}"
+	[ -n "${DEBUG:-}" ] && echo "{stream_chunk_list} = ${stream_chunk_list}"
+
+	if [[ "${stream_chunk_list}" =~ invalidtoken ]] ; then
+		echo FATAL: RTVS web reported invalid token! Exiting!
+		break
+	fi
+
+	# the actual download
+	if [ -z "${DEBUG:-}" ] ; then
+		if ffmpeg -i "${stream_chunk_list}" -c:a copy -map 0:a -c:v copy -map 0:v -max_error_rate 0 "${stream_title} ${stream_resolution}.mp4" ; then
+			break
+		fi
+	fi
+done
 
 # cleanup
 if [ -z "${DEBUG:-}" ] ; then
