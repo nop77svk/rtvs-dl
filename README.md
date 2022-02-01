@@ -12,7 +12,7 @@ Nápoveda v Slovenčine https://github.com/bedna-KU/rtvs-dl/blob/master/READMEsk
 * `wget` (because I just could not get one damn piece of the script working with plain `curl`)
 
 ### Instalation
-`git clone https://github.com/nop77svkU/rtvs-dl.git`
+`git clone https://github.com/nop77svk/rtvs-dl.git`
 
 ### Run
 `./rtvs-dl.sh `_`link_from_archive`_
