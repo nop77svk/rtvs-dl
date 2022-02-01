@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# ----------------------------------------------------------------------------
+# OPTIONS
+TRACK_CHOICE=2
+
+# ----------------------------------------------------------------------------
+
 # If link is empty exit
 [ -z "$1" ] && echo "Link is empty" && exit
 echo "Download page: $1"
@@ -46,7 +52,7 @@ stream_title_node=$(echo "${stream_tmp%x}" | grep "title")
 [ -n "${DEBUG:-}" ] && echo "{stream_title_node} = ${stream_title_node}"
 
 # Extract title
-stream_title=$(echo "$stream_title" | cut -d ":" -f 2)
+stream_title=$(echo "${stream_title_node}" | cut -d ":" -f 2)
 [ -n "${DEBUG:-}" ] && echo "{stream_title} = ${stream_title}"
 
 # Remove ", from end
@@ -76,18 +82,24 @@ stream_src_node_array=(${stream_src_node})
 stream_link=$(echo "${stream_src_node_array[2]}" | sed 's/[\",]//g')
 [ -n "${DEBUG:-}" ] && echo "{stream_link} = $stream_link"
 
-(
-	if [[ "${stream_link}" =~ /playlist\.m3u8 ]] ; then
-		url_base=$( echo "${stream_link}" | sed 's/^\(https\?:\/\/[^/]*\)\/.*$/\1/' )
-		[ -n "${DEBUG:-}" ] && echo "{url_base} = ${url_base}"
-		[ -n "${DEBUG:-}" ] && wget_log_output=/dev/stderr || wget_log_output=/dev/null
+track_choice=???
+track_choice_opt=
+track_resolution=???x???
+track_resolution_opt=
 
+if [[ "${stream_link}" =~ /playlist\.m3u8 ]] ; then
+	url_base=$( echo "${stream_link}" | sed 's/^\(https\?:\/\/[^/]*\)\/.*$/\1/' )
+	[ -n "${DEBUG:-}" ] && echo "{url_base} = ${url_base}"
+	[ -n "${DEBUG:-}" ] && wget_log_output=/dev/stderr || wget_log_output=/dev/null
+
+	highest_resolution=$(
 		wget -O /dev/stdout -o ${wget_log_output} --no-cache "${stream_link}" \
 			| tr '\r' '\n' \
 			| grep -vE '^[[:space:]]*$' \
 			| gawk -v "i_url_base=${url_base}" '
 				BEGIN {
 					o_fs = "\t";
+					o_res_index = 0;
 				}
 
 				$0 ~ /^#EXT-X-STREAM-INF/ {
@@ -101,30 +113,39 @@ stream_link=$(echo "${stream_src_node_array[2]}" | sed 's/[\",]//g')
 				}
 
 				$0 ~ /^\// {
-					printf("%s%s%s%s%s%s\n", bandwidth, o_fs, resolution, o_fs, i_url_base, $0);
+					o_res_index++;
+					printf("%d	%s	%s	%s%s\n", o_res_index, bandwidth, resolution, i_url_base, $0);
 				}
 			' \
-			| /bin/sort -b -n -r -k 1
-	else
-		echo "-1\tUNKNOWNxUNKNOWN\t${stream_link}"
-	fi
-) | while read -r stream_bandwidth stream_resolution stream_chunk_list ; do
-	echo "Trying to download video resolution ${stream_resolution}"
-	[ -n "${DEBUG:-}" ] && echo "{stream_bandwidth} = ${stream_bandwidth}"
-	[ -n "${DEBUG:-}" ] && echo "{stream_chunk_list} = ${stream_chunk_list}"
+			| /bin/sort -b -n -r -k 2 \
+			| head -n 1
+	)
 
-	if [[ "${stream_chunk_list}" =~ invalidtoken ]] ; then
-		echo FATAL: RTVS web reported invalid token! Exiting!
+	highest_res_defs=( ${highest_resolution} )
+
+	track_choice="${highest_res_defs[0]}"
+	track_choice_opt=":"$(( track_choice - 1 ))
+
+	track_resolution="${highest_res_defs[2]}"
+	track_resolution_opt=" [${track_resolution}]"
+fi
+
+[ -n "${DEBUG:-}" ] && echo "{track_choice_opt} = ${track_choice_opt}"
+[ -n "${DEBUG:-}" ] && echo "{track_resolution_opt} = ${track_resolution_opt}"
+
+echo "Trying to download video stream #${track_choice}, resolution ${track_resolution:-???x???}"
+
+if [[ "${stream_link}" =~ invalidtoken ]] ; then
+	echo FATAL: RTVS web reported invalid token! Exiting!
+	break
+fi
+
+# the actual download
+if [ -z "${DEBUG:-}" ] ; then
+	if ffmpeg -i "${stream_link}" -c:a copy -map 0:a${track_choice_opt} -c:v copy -map 0:v${track_choice_opt} "${stream_title}${track_resolution_opt}.mp4" ; then
 		break
 	fi
-
-	# the actual download
-	if [ -z "${DEBUG:-}" ] ; then
-		if ffmpeg -i "${stream_chunk_list}" -c:a copy -map 0:a -c:v copy -map 0:v -max_error_rate 0 "${stream_title} ${stream_resolution}.mp4" ; then
-			break
-		fi
-	fi
-done
+fi
 
 # cleanup
 if [ -z "${DEBUG:-}" ] ; then
